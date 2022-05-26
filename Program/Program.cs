@@ -18,7 +18,7 @@ class Program
         Console.WriteLine();
         
         var reportDownloader = new CsvReportDownloader(apiKey);
-
+        
         // Get the workspaces and select the desired one
         var workspaces = await reportDownloader.GetWorkspaces();
         
@@ -28,7 +28,7 @@ class Program
             var workspace = workspaces[i];
             Console.WriteLine($"{i} - {workspace.Name}");
         }
-
+        
         Console.WriteLine();
         Console.WriteLine("Insert the number of the workspace you desire");
         
@@ -39,9 +39,14 @@ class Program
         var workspaceIndex = Int32.Parse(workspaceIndexStr);
         
         var workspaceId = workspaces[workspaceIndex].Id.ToString();
-
+        
         var report = await reportDownloader.DownloadDetailedReport(workspaceId);
         
-        await File.WriteAllTextAsync("report.csv", report);
+        // await File.WriteAllTextAsync("report.csv", report);
+        
+        var dataTable = ReportConverter.BuildDataTableFromCsv(report);
+        ReportConverter.ShowData(dataTable);
+        
+        return;
     }
 }
