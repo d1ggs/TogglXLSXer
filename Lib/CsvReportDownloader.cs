@@ -1,14 +1,14 @@
 ﻿using System.Net.Http.Headers;
 using System.Text;
-using Dtos;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
+using Lib.Dtos;
 namespace Lib;
 
 public class CsvReportDownloader
 {
-    public const string ReportEndpoint = "https://api.track.toggl.com/reports/api/v2/details.csv";
-    public const string WorkspaceEndpoint = "https://api.track.toggl.com/api/v8/workspaces";
+    public readonly string ReportEndpoint = "https://api.track.toggl.com/reports/api/v2/details.csv";
+    public readonly string WorkspaceEndpoint = "https://api.track.toggl.com/api/v8/workspaces";
     
     private readonly string _apiKey;
     private readonly HttpClient _client;

@@ -2,16 +2,14 @@
 
     <PropertyGroup>
         <TargetFramework>net6.0</TargetFramework>
+        <LangVersion>latestmajor</LangVersion>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
     </PropertyGroup>
 
     <ItemGroup>
+      <PackageReference Include="EPPlus" Version="6.0.4" />
       <PackageReference Include="Newtonsoft.Json" Version="9.0.1" />
-    </ItemGroup>
-
-    <ItemGroup>
-      <ProjectReference Include="..\Dtos\Dtos.csproj" />
     </ItemGroup>
 
 </Project>
