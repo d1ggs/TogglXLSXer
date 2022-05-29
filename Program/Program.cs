@@ -92,5 +92,27 @@ internal static class Program
         
         // Put the report inside a DataTable, for easier handling
         var dataTable = ReportConverter.BuildDataTableFromCsv(report);
+
+        Console.WriteLine("\nInsert your full name (e.g., John Appleseed)");
+        var name = Console.ReadLine();
+        while (name == null)
+        {
+            Console.WriteLine("\nPlease insert a name.");
+            name = Console.ReadLine();
+        }
+        
+        Console.WriteLine("\nInsert your company name (e.g., Apple)");
+        var company = Console.ReadLine();
+        while (company == null)
+        {
+            Console.WriteLine("\nPlease insert a company.");
+            company = Console.ReadLine();
+        }
+
+        var formatter = new ReportFormatter(company, name, monthNumber, yearNumber, debug: true);
+
+        var saveTask = formatter.FormatCsvToExcel(dataTable);
+
+        await saveTask;
     }
 }

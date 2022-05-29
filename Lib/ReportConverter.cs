@@ -2,7 +2,7 @@
 
 namespace Lib;
 
-public class ReportConverter
+public static class ReportConverter
 {
     public static DataTable BuildDataTableFromCsv(string csv)
     {
