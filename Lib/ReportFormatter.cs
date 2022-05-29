@@ -120,7 +120,7 @@ public class ReportFormatter
                         "yyyy-MM-dd", _italianCultureInfo).ToString("dd/MM/yyyy");
                     break;
 
-                // Round to nearest minute the time
+                // Round time to the nearest minute
                 case "H. INIZIO":
                     value = RoundTimeOnlyString(value);
                     StartTime = TimeOnly.ParseExact(value, "HH:mm", _italianCultureInfo);
@@ -131,6 +131,7 @@ public class ReportFormatter
                     EndTime = TimeOnly.ParseExact(value, "HH:mm", _italianCultureInfo);
                     break;
                 
+                // Compute working/vacation time
                 case "TOTALE":
                     tags = row.Field<string>("Tags") ?? "";
 
@@ -148,6 +149,7 @@ public class ReportFormatter
                     value = (EndTime - StartTime).ToString("hh\\:mm");
                     break;
                 
+                // Flag remote working
                 case "IN PRESENZA S/N":
                     tags = row.Field<string>("Tags") ?? "";
 
