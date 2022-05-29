@@ -1,4 +1,4 @@
-﻿using Lib;
+using Lib;
 
 // See https://aka.ms/new-console-template for more information
 
@@ -33,8 +33,7 @@ internal static class Program
             Console.WriteLine($"{i} - {workspace.Name}");
         }
         
-        Console.WriteLine();
-        Console.WriteLine("Insert the number of the workspace you desire");
+        Console.WriteLine("\nInsert the number of the workspace you desire");
         
         var workspaceIndexStr = Console.ReadLine();
         
