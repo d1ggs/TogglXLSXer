@@ -17,11 +17,13 @@ public class CsvReportDownloader
 
     private readonly string _apiKey;
     private readonly HttpClient _client;
+    private readonly bool _debug;
 
-    public CsvReportDownloader(string apiKey)
+    public CsvReportDownloader(string apiKey, bool debug=false)
     {
         _apiKey = apiKey;
         _client = new HttpClient();
+        _debug = debug;
     }
 
     public async Task<List<TogglWorkspaceDto>> GetWorkspaces()
@@ -68,7 +70,7 @@ public class CsvReportDownloader
         // Check that the number of rows is at least 3: we need the header plus at least an entry.
         // There is also a blank line at the end of the report, so we need to keep this into account.
         var rowsNumber = report.Split('\n').Length;
-        Console.WriteLine($"Report has length {rowsNumber}");
+        if (_debug) Console.WriteLine($"Report has length {rowsNumber}");
         if (rowsNumber < 3) throw new EmptyReportException();
 
         return report;
