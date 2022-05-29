@@ -4,17 +4,21 @@
 
 namespace Application;
 
-class Program
+internal static class Program
 {
-    
-    static async Task Main(string[] args)
+    private static async Task Main(string[] args)
     {
         
         Console.WriteLine("Insert your API Token.\n" +
                           "You can find it at the bottom of the " +
                           "https://track.toggl.com/profile page");
         var apiKey = Console.ReadLine();
-        if (apiKey == null) throw new ArgumentNullException();
+        if (apiKey == null) throw new ArgumentNullException
+        {
+            HelpLink = null,
+            HResult = 0,
+            Source = null
+        };
         Console.WriteLine();
         
         var reportDownloader = new CsvReportDownloader(apiKey);
@@ -23,7 +27,7 @@ class Program
         var workspaces = await reportDownloader.GetWorkspaces();
         
         Console.WriteLine("Available workspaces:");
-        for (int i = 0; i < workspaces.Count; i++)
+        for (var i = 0; i < workspaces.Count; i++)
         {
             var workspace = workspaces[i];
             Console.WriteLine($"{i} - {workspace.Name}");
@@ -36,17 +40,58 @@ class Program
         
         // Do not allow null values
         if (workspaceIndexStr == null) throw new ArgumentNullException();
-        var workspaceIndex = Int32.Parse(workspaceIndexStr);
+        var workspaceIndex = int.Parse(workspaceIndexStr);
         
         var workspaceId = workspaces[workspaceIndex].Id.ToString();
+
+        var parsed = false;
+        var monthNumber = DateTime.Now.Month;
+        var yearNumber = DateTime.Now.Year;
         
-        var report = await reportDownloader.DownloadDetailedReport(workspaceId);
+        Console.WriteLine("\nInsert the month number for which you desire to download the report");
+
+        while (!parsed)
+        {
+            var month = Console.ReadLine();
+            parsed = int.TryParse(month, out monthNumber);
+            if (!parsed)
+            {
+                Console.WriteLine("\nYou input an invalid value. Please input a number between 1 and 12");
+            }
+        }
+
+        parsed = false;
         
-        // await File.WriteAllTextAsync("report.csv", report);
+        Console.WriteLine("\nInsert the year for which you desire to download the report");
+
+        while (!parsed)
+        {
+            var year = Console.ReadLine();
+            parsed = int.TryParse(year, out yearNumber);
+            if (!parsed)
+            {
+                Console.WriteLine($"\nYou input an invalid value. " +
+                                  $"Please input an year between 1970 and {DateTime.Now.Year}");
+            }
+        }
+
+        string report;
         
+        // The invocation of DownloadDetailedReport might fail if the report is empty
+        try
+        {
+            report = await reportDownloader.DownloadDetailedReport(workspaceId, yearNumber, monthNumber);
+        }
+        catch (EmptyReportException)
+        {
+            Console.WriteLine("There is no data for the selected date range.");
+            return;
+        }
+        
+        // Write the report to a file
+        await File.WriteAllTextAsync("report.csv", report);
+        
+        // Put the report inside a DataTable, for easier handling
         var dataTable = ReportConverter.BuildDataTableFromCsv(report);
-        ReportConverter.ShowData(dataTable);
-        
-        return;
     }
 }

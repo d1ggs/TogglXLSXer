@@ -5,20 +5,25 @@ using Newtonsoft.Json.Serialization;
 using Lib.Dtos;
 namespace Lib;
 
+public class EmptyReportException : Exception
+{
+    
+}
+
 public class CsvReportDownloader
 {
-    public readonly string ReportEndpoint = "https://api.track.toggl.com/reports/api/v2/details.csv";
-    public readonly string WorkspaceEndpoint = "https://api.track.toggl.com/api/v8/workspaces";
-    
+    private const string ReportEndpoint = "https://api.track.toggl.com/reports/api/v2/details.csv";
+    private const string WorkspaceEndpoint = "https://api.track.toggl.com/api/v8/workspaces";
+
     private readonly string _apiKey;
     private readonly HttpClient _client;
-    
+
     public CsvReportDownloader(string apiKey)
     {
         _apiKey = apiKey;
         _client = new HttpClient();
     }
-    
+
     public async Task<List<TogglWorkspaceDto>> GetWorkspaces()
     {
         // Add authorization
@@ -41,16 +46,30 @@ public class CsvReportDownloader
         return dtos;
     }
     
-    public async Task<string> DownloadDetailedReport(string workspaceId)
+    public async Task<string> DownloadDetailedReport(string workspaceId, int year, int month)
     {
         var byteArray = Encoding.ASCII.GetBytes($"{_apiKey}:api_token");
         var base64Auth = Convert.ToBase64String(byteArray);
-        // Required parameters are passed in the GET request and are user_agent and workspace_id
+        
+        // Build the date range strings needed to download the report
+        var startDate = new DateTime(year, month, 1).ToString("yyyy-MM-dd");
+        var endDate = new DateTime(year, month, DateTime.DaysInMonth(year, month)).ToString("yyyy-MM-dd");
+        
         _client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Basic", base64Auth);
-        var reportTask = _client.GetStringAsync($"{ReportEndpoint}?user_agent=diego.piccinotti@gmail.com&" +
-                                                 $"workspace_id={workspaceId}");
+        // Required parameters are passed in the GET request and are user_agent and workspace_id
+        var reportTask = _client.GetStringAsync($"{ReportEndpoint}?" +
+                                                $"user_agent=stornello-ducati0a@icloud.com&" +
+                                                $"workspace_id={workspaceId}&" +
+                                                $"since={startDate}&" +
+                                                $"until={endDate}");
         
         var report = await reportTask;
+        
+        // Check that the number of rows is at least 3: we need the header plus at least an entry.
+        // There is also a blank line at the end of the report, so we need to keep this into account.
+        var rowsNumber = report.Split('\n').Length;
+        Console.WriteLine($"Report has length {rowsNumber}");
+        if (rowsNumber < 3) throw new EmptyReportException();
 
         return report;
     }
