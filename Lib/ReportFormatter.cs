@@ -1,23 +1,28 @@
 using System.Data;
+using System.Drawing;
 using System.Globalization;
-using System.Net;
 using OfficeOpenXml;
+using OfficeOpenXml.Style;
 
 namespace Lib;
 
 public class ReportFormatter
 {
-    
-    private readonly int _pageHeight = 34;
+    private const int PageHeight = 34;
     private readonly char _pageWidth = 'L';
-    private readonly int[] _excelColumns = Enumerable.Range(2, 10).ToArray();
+    private readonly int[] _excelColumns = Enumerable.Range(2, 9).ToArray();
     private readonly string _company;
     private readonly string _person;
 
-    private readonly string[] _dataColumns = new[]
-        { "DATA", "CLIENTE", "PROGETTO", "DESCRIZIONE", "H. INIZIO", "H. FINE", "TOTALE", "FERIE/PERMESSI", "IN PRESENZA S/N" };
+    private readonly int[] _columnWidths = { 2, 11, 11, 14, 30, 9, 8, 8, 15, 12, 2 };
 
-    private readonly Dictionary<string, string> _columnMapping = new Dictionary<string, string>
+    private readonly string[] _dataColumns =
+        { "DATA", "CLIENTE", "PROGETTO", "DESCRIZIONE", "H. INIZIO", "H. FINE", "TOTALE", "FERIE/PERMESSI", "IN PRESENZA" };
+
+    private readonly string[] _expenseColumnsNames = { "DATA", "PROGETTO", "LUOGO", "DESCRIZIONE SPESA", "EURO" };
+    private readonly int[] _expenseColumns = { 2, 3, 4, 5, 6 };
+    
+    private readonly Dictionary<string, string> _columnMapping = new()
     {
         { "CLIENTE", "Client" },
         { "PROGETTO", "Project" },
@@ -31,8 +36,14 @@ public class ReportFormatter
     private readonly int _year;
     private readonly CultureInfo _italianCultureInfo = new CultureInfo("it-IT");
     private readonly bool _debug;
+    private TimeSpan _totalWorkedTime;
+    
+    private readonly Color _darkGreen = ColorTranslator.FromHtml("#548235");
+    private readonly Color _lightGreen = ColorTranslator.FromHtml("#92D050");
+    private readonly Color _paleGreen = ColorTranslator.FromHtml("#C6E0B4");
+    private readonly Color _lightGrey = ColorTranslator.FromHtml("#D9D9D9");
 
-    public string MonthName =>
+    private string MonthName =>
         new DateOnly(2000, _month, 1).ToString("MMMM", _italianCultureInfo);
     
     public ReportFormatter(string company, string person, int month, int year, bool debug=false)
@@ -53,12 +64,34 @@ public class ReportFormatter
         worksheet.SetValue(5, 3, _person); // light_green_regular_format)
         worksheet.SetValue(6, 2, "Mese"); //, bold_format)
         worksheet.SetValue(6, 3, $"{MonthName} {_year}"); // light_green_regular_format
+        // Add borders to all cells
+        worksheet.Cells[4, 2, 6, 3].Style.Border.Top.Style = ExcelBorderStyle.Thin;
+        worksheet.Cells[4, 2, 6, 3].Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
+        worksheet.Cells[4, 2, 6, 3].Style.Border.Left.Style = ExcelBorderStyle.Thin;
+        worksheet.Cells[4, 2, 6, 3].Style.Border.Right.Style = ExcelBorderStyle.Thin;
+        
+        // Add the light green fill to the value cells
+        worksheet.Cells[4, 3, 6, 3].Style.Fill.PatternType = ExcelFillStyle.Solid;
+        worksheet.Cells[4, 3, 6, 3].Style.Fill.BackgroundColor.SetColor(_paleGreen);
+        
+        // Add bold to the heading cells
+        worksheet.Cells[4, 2, 6, 2].Style.Font.Bold = true;
     }
 
     private void AddTableHeader(ExcelWorksheet worksheet, int rowIndex)
     {
-        foreach (var (columnName, columnIndex) in _dataColumns.Zip(_excelColumns)) 
+        // TODO format the table header
+        foreach (var (columnName, columnIndex) in _dataColumns.Zip(_excelColumns))
+        {
+            // Write value
             worksheet.SetValue(rowIndex, columnIndex, columnName);
+            
+            // Add styling
+            var cell = worksheet.Cells[rowIndex, columnIndex];
+            cell.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+            cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        }
+            
     }
     
     public Task FormatCsvToExcel(DataTable dataTable)
@@ -68,7 +101,17 @@ public class ReportFormatter
         {
             var workbook = package.Workbook;
             var worksheet = workbook.Worksheets.Add("Foglio 1");
+
+            _totalWorkedTime = new TimeSpan();
             
+            // Add the columns to the worksheet and set the width
+            for (var i = 0; i < _columnWidths.Length; i++)
+            {
+                worksheet.Column(i+1).Width = _columnWidths[i ];
+            }
+
+            AddSheetTitle(worksheet);
+
             AddSheetHeader(worksheet);
 
             var rowCounter = 9;
@@ -77,13 +120,208 @@ public class ReportFormatter
 
             rowCounter++;
 
+            var startDate = "";
+            var mergeCounter = rowCounter;
+            DateOnly prevDate;
+            
             foreach (DataRow row in dataTable.Rows)
             {
+                var curDate = row.Field<string>("Start date");
+                if (curDate == null) continue;
+                
+                if (startDate == "")
+                {
+                    startDate = curDate;
+                    prevDate =  DateOnly.ParseExact(curDate, "yyyy-MM-dd", _italianCultureInfo);
+                }
+                
+                var merged = false;
+                
+                if (curDate != startDate)
+                {
+                    // Merge cells that share the same date
+                    MergeCells(worksheet, new [] { "B", "I", "J"}, mergeCounter, rowCounter - 1);
+
+                    mergeCounter = rowCounter;
+                    startDate = curDate;
+                    merged = true;
+                    
+                    // Split the pages if we reached maximum page height
+                    if ((rowCounter + 1) % PageHeight == 0)
+                        mergeCounter = SkipRowsAndAddTableHeader(worksheet, ref rowCounter);
+
+                    // Fill the missing days. E.g., if we are jumping from 04/05 to 04/07 we need to add 04/06
+                    var curDateOnly = DateOnly.
+                        ParseExact(curDate ?? throw new InvalidOperationException(), "yyyy-MM-dd", _italianCultureInfo);
+                    
+                    // TODO this still does not work correctly
+                    var prevDay = curDateOnly.AddDays(-1);
+                    prevDate = prevDate.AddDays(1);
+                    while (prevDate <= prevDay)
+                    {
+                        // Write the missing date
+                        worksheet.SetValue(rowCounter, 2, prevDate.ToString("dd/MM/yyyy", _italianCultureInfo));
+                        
+                        // Add the border to the empty cells and paint them grey, assuming missing cells are holidays
+                        foreach (var columnIndex in _excelColumns)
+                        {
+                            var cell = worksheet.Cells[rowCounter, columnIndex];
+                            cell.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+                            cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                            cell.Style.Fill.BackgroundColor.SetColor(_lightGrey);
+                        }
+                        
+                        mergeCounter = ++rowCounter;
+                        prevDate = prevDate.AddDays(1);
+                        
+                        // Split the pages if we reached maximum page height
+                        if ((rowCounter + 1) % PageHeight == 0)
+                            mergeCounter = SkipRowsAndAddTableHeader(worksheet, ref rowCounter);
+                    }
+                    
+                    // Since curDateOnly will be written to the worksheet, the next missing day might be the day after
+                    prevDate = curDateOnly.AddDays(1);
+
+                }
+                
+                // Split the pages if we reached maximum page height
+                if ((rowCounter + 1) % PageHeight == 0)
+                {
+                    // Merge up to previous cell
+                    if (!merged)
+                        MergeCells(worksheet, new [] { "B", "I", "J"}, mergeCounter, rowCounter-1);
+
+                    mergeCounter = SkipRowsAndAddTableHeader(worksheet, ref rowCounter);
+                }
+                
                 WriteSheetRow(row, worksheet, rowCounter);
                 rowCounter++;
+
+            }
+            
+            // Add the hours grand total
+            worksheet.SetValue(rowCounter, 8, $"{(int) _totalWorkedTime.TotalHours}:{_totalWorkedTime.Minutes}");
+            var totalCell = worksheet.Cells[rowCounter, 8];
+            totalCell.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+            totalCell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            totalCell.Style.Fill.BackgroundColor.SetColor(_darkGreen);
+            totalCell.Style.Font.Color.SetColor(Color.White);
+            totalCell.Style.Font.Bold = true;
+                
+            // Add the expense footer
+            var pageNumber = rowCounter / PageHeight + 1;
+            rowCounter = PageHeight * pageNumber + 2;
+            
+            AddExpenseFooter(worksheet, rowCounter);
+            rowCounter++;
+            
+            // Add some empty table rows
+            for (var i = 0; i < 7; i++)
+            {
+                rowCounter++;
+                foreach (var columnIndex in _expenseColumns)
+                {
+                    // Create "empty" table cells by adding borders
+                    var cell = worksheet.Cells[rowCounter, columnIndex];
+                    cell.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+                    
+                    // Add background only to last column
+                    if (columnIndex != _expenseColumns.Max()) continue;
+                    cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    cell.Style.Fill.BackgroundColor.SetColor(_paleGreen);
+                }
             }
 
+            rowCounter++;
+            
+            worksheet.SetValue(rowCounter, 6, 0);
+            totalCell = worksheet.Cells[rowCounter, 6];
+            totalCell.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+            totalCell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            totalCell.Style.Fill.BackgroundColor.SetColor(_darkGreen);
+            totalCell.Style.Font.Color.SetColor(Color.White);
+            totalCell.Style.Font.Bold = true;
+
             return package.SaveAsAsync("timesheet.xlsx");
+        }
+    }
+
+    private void AddSheetTitle(ExcelWorksheet worksheet)
+    {
+        // Write the title
+        worksheet.SetValue(2, 2, "TIME REPORT MENSILE");
+
+        // Add title styling
+        var titleCells = worksheet.Cells["B2:J2"];
+        titleCells.Merge = true;
+        titleCells.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+        titleCells.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        titleCells.Style.Fill.PatternType = ExcelFillStyle.Solid;
+        titleCells.Style.Fill.BackgroundColor.SetColor(_darkGreen);
+        titleCells.Style.Font.Color.SetColor(Color.White);
+        titleCells.Style.Font.Bold = true;
+    }
+
+    private void AddExpenseFooter(ExcelWorksheet worksheet, int rowCounter)
+    {
+        // Write title
+        worksheet.SetValue(rowCounter, 2, "SPESE MENSILI");
+        
+        // Add title styling
+        var titleCells = worksheet.Cells[$"B{rowCounter}:F{rowCounter}"];
+        titleCells.Merge = true;
+        titleCells.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+        titleCells.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+        titleCells.Style.Fill.PatternType = ExcelFillStyle.Solid;
+        titleCells.Style.Fill.BackgroundColor.SetColor(_darkGreen);
+        titleCells.Style.Font.Color.SetColor(Color.White);
+        titleCells.Style.Font.Bold = true;
+
+        // Add blank expense table
+        rowCounter += 2;
+
+        foreach (var (columnName, columnIndex) in _expenseColumnsNames.Zip(_expenseColumns))
+        {
+            
+            worksheet.SetValue(rowCounter, columnIndex, columnName);
+
+            var cell = worksheet.Cells[rowCounter, columnIndex];
+            if (columnName is "DATA" or "EURO")
+            {
+                cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                cell.Style.Fill.BackgroundColor.SetColor(_lightGreen);
+            }
+            else
+            {
+                cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                cell.Style.Fill.BackgroundColor.SetColor(_darkGreen);
+                cell.Style.Font.Color.SetColor(Color.White);
+                cell.Style.Font.Bold = true;
+
+            }
+            cell.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+        }
+    }
+
+    private int SkipRowsAndAddTableHeader(ExcelWorksheet worksheet, ref int rowCounter)
+    {
+        int mergeCounter;
+        // Skip cells and add new page table header
+        rowCounter += 3;
+        AddTableHeader(worksheet, rowCounter);
+        rowCounter++;
+        mergeCounter = rowCounter;
+        return mergeCounter;
+    }
+
+    private static void MergeCells(ExcelWorksheet worksheet, string[] columns, int mergeCounter, int rowCounter)
+    {
+        foreach (var column in columns)
+        {
+            var mergedCells = worksheet.Cells[$"{column}{mergeCounter}:{column}{rowCounter}"];
+            mergedCells.Merge = true;
+            mergedCells.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+            mergedCells.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
         }
     }
 
@@ -112,12 +350,16 @@ public class ReportFormatter
                 }
             }
 
+            var applyAlignment = false;
+            var addBackground = false;
+            
             switch (dataColumn)
             {
                 case "DATA":
                     value = DateOnly.ParseExact(
                         value,
                         "yyyy-MM-dd", _italianCultureInfo).ToString("dd/MM/yyyy");
+                    applyAlignment = true;
                     break;
 
                 // Round time to the nearest minute
@@ -137,16 +379,24 @@ public class ReportFormatter
 
                     // Skip total column if vacation or office leave was used
                     if (tags.Contains("ferie") || tags.Contains("permesso")) value = "";
-                    else value = (EndTime - StartTime).ToString("hh\\:mm");
+                    
+                    else
+                    {
+                        var span = (EndTime - StartTime);
+                        _totalWorkedTime += span;
+                        value = span.ToString("hh\\:mm");
+                    }
+
+                    addBackground = true;
                     break;
                 
                 case "FERIE/PERMESSI":
                     tags = row.Field<string>("Tags") ?? "";
 
                     // Skip vacation column if no vacation or office leave was used
-                    if (!(tags.Contains("ferie") || tags.Contains("permesso"))) continue;
-                    
+                    if (!(tags.Contains("ferie") || tags.Contains("permesso"))) value="";
                     value = (EndTime - StartTime).ToString("hh\\:mm");
+                    applyAlignment = true;
                     break;
                 
                 // Flag remote working
@@ -155,13 +405,22 @@ public class ReportFormatter
 
                     // Search for a "remot*" substring in tags to identify remote working days
                     value = (!tags.Contains("remot"))? "S" : "N";
+                    applyAlignment = true;
                     break;
                 
                 default:
                     break;
             }
-
             worksheet.SetValue(rowCounter, excelColumn, value);
+            // Add the border to the cell
+            var cell = worksheet.Cells[rowCounter, excelColumn];
+            cell.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+            if (applyAlignment) cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+            if (addBackground)
+            {
+                cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                cell.Style.Fill.BackgroundColor.SetColor(_paleGreen);
+            }
         }
     }
 
@@ -177,7 +436,7 @@ public class ReportFormatter
             time = new TimeOnly(time.Hour, time.Minute).AddMinutes(1);
         }
 
-        value = time.ToString("hh\\:mm");
+        value = time.ToString("HH\\:mm", _italianCultureInfo);
         return value;
     }
 }
