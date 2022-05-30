@@ -29,7 +29,9 @@ public static class ReportConverter
             table.Rows.Add(dataTableRow);
         }
 
-        return table;
+        table.DefaultView.Sort = "Start date,Start time";
+
+        return table.DefaultView.ToTable();
     }
 
 }
