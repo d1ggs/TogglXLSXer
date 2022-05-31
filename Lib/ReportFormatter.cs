@@ -8,13 +8,13 @@ namespace Lib;
 
 public class ReportFormatter
 {
-    private const int PageHeight = 34;
-    private readonly char _pageWidth = 'L';
+    private const int PageHeight = 33;
+    private const int PageWidth = 12;
     private readonly int[] _excelColumns = Enumerable.Range(2, 9).ToArray();
     private readonly string _company;
     private readonly string _person;
 
-    private readonly int[] _columnWidths = { 2, 11, 11, 14, 30, 9, 8, 8, 15, 12, 2 };
+    private readonly int[] _columnWidths = { 0, 11, 13, 14, 30, 9, 8, 8, 15, 12, 0 };
 
     private readonly string[] _dataColumns =
         { "DATA", "CLIENTE", "PROGETTO", "DESCRIZIONE", "H. INIZIO", "H. FINE", "TOTALE", "FERIE/PERMESSI", "IN PRESENZA" };
@@ -31,7 +31,7 @@ public class ReportFormatter
         { "H. FINE", "End time" },
         {"DESCRIZIONE", "Description"}
     };
-
+    
     private readonly int _month;
     private readonly int _year;
     private readonly CultureInfo _italianCultureInfo = new CultureInfo("it-IT");
@@ -58,12 +58,13 @@ public class ReportFormatter
 
     private void AddSheetHeader(ExcelWorksheet worksheet)
     {
-        worksheet.SetValue(4, 2, "Società"); // bold_format
-        worksheet.SetValue(4, 3, _company); // light_green_regular_format
-        worksheet.SetValue(5, 2, "Risorsa"); //, bold_format)
-        worksheet.SetValue(5, 3, _person); // light_green_regular_format)
-        worksheet.SetValue(6, 2, "Mese"); //, bold_format)
-        worksheet.SetValue(6, 3, $"{MonthName} {_year}"); // light_green_regular_format
+        worksheet.SetValue(4, 2, "Società");
+        worksheet.SetValue(4, 3, _company);
+        worksheet.SetValue(5, 2, "Risorsa");
+        worksheet.SetValue(5, 3, _person);
+        worksheet.SetValue(6, 2, "Mese");
+        worksheet.SetValue(6, 3, $"{MonthName} {_year}");
+        
         // Add borders to all cells
         worksheet.Cells[4, 2, 6, 3].Style.Border.Top.Style = ExcelBorderStyle.Thin;
         worksheet.Cells[4, 2, 6, 3].Style.Border.Bottom.Style = ExcelBorderStyle.Thin;
@@ -102,6 +103,7 @@ public class ReportFormatter
             cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
             cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
             cell.Style.Fill.BackgroundColor.SetColor(backgroundColor);
+            
             if (backgroundColor == _darkGreen)
             {
                 cell.Style.Font.Bold = true;
@@ -174,11 +176,11 @@ public class ReportFormatter
                         ParseExact(curDate ?? throw new InvalidOperationException(), "yyyy-MM-dd", _italianCultureInfo);
                     
                     var prevDay = curDateOnly.AddDays(-1);
-                    prevDate = prevDate.AddDays(1);
-                    while (prevDate <= prevDay)
+                    var curCellDate = prevDate.AddDays(1);
+                    while (curCellDate <= prevDay)
                     {
                         // Write the missing date
-                        worksheet.SetValue(rowCounter, 2, prevDate.ToString("dd/MM/yyyy", _italianCultureInfo));
+                        worksheet.SetValue(rowCounter, 2, curCellDate.ToString("dd/MM/yyyy", _italianCultureInfo));
                         
                         // Add the border to the empty cells and paint them grey, assuming missing cells are holidays
                         foreach (var columnIndex in _excelColumns)
@@ -191,7 +193,7 @@ public class ReportFormatter
                         }
                         
                         mergeCounter = ++rowCounter;
-                        prevDate = prevDate.AddDays(1);
+                        curCellDate = curCellDate.AddDays(1);
                         
                         // Split the pages if we reached maximum page height
                         if ((rowCounter + 1) % PageHeight == 0)
@@ -262,6 +264,23 @@ public class ReportFormatter
             totalCell.Style.Fill.BackgroundColor.SetColor(_darkGreen);
             totalCell.Style.Font.Color.SetColor(Color.White);
             totalCell.Style.Font.Bold = true;
+            
+            // Add worksheet formatting
+            worksheet.Column(PageWidth).PageBreak = true;
+            worksheet.PrinterSettings.PaperSize = ePaperSize.A4;
+            worksheet.PrinterSettings.Orientation = eOrientation.Landscape;
+            worksheet.PrinterSettings.LeftMargin = Convert.ToDecimal(0.31496062992126);
+            worksheet.PrinterSettings.RightMargin = Convert.ToDecimal(0.31496062992126);
+            worksheet.PrinterSettings.TopMargin = Convert.ToDecimal(0.748031496062992);
+            worksheet.PrinterSettings.BottomMargin = Convert.ToDecimal(0.748031496062992);
+            worksheet.PrinterSettings.HorizontalCentered = true;
+            worksheet.PrinterSettings.VerticalCentered = true;
+
+            foreach (var i in Enumerable.Range(0, pageNumber - 1))
+            {
+                var breakIndex = (i + 1) * PageHeight;
+                worksheet.Column(breakIndex).PageBreak = true;
+            }
 
             return package.SaveAsAsync("timesheet.xlsx");
         }
@@ -453,7 +472,7 @@ public class ReportFormatter
         var time = TimeOnly.ParseExact(value, "HH:mm:ss", _italianCultureInfo);
 
         // Leave 23:59 alone, as it would turn to 00:00 but date would not be increased
-        if (time.Hour == 23 && time.Minute == 59) return value;
+        if (time.Hour == 23 && time.Minute == 59) return "23:59";
 
         if (time.Second > 30)
         {
