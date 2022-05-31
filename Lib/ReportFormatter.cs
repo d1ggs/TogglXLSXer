@@ -80,9 +80,19 @@ public class ReportFormatter
 
     private void AddTableHeader(ExcelWorksheet worksheet, int rowIndex)
     {
-        // TODO format the table header
-        foreach (var (columnName, columnIndex) in _dataColumns.Zip(_excelColumns))
+        Color[] tableHeaderColors =
         {
+            _lightGreen, _darkGreen, _darkGreen, _darkGreen, 
+            _lightGreen, _lightGreen, _darkGreen, _lightGreen,
+            _lightGreen
+        };
+
+        // TODO format the table header
+        for (int i = 0; i < tableHeaderColors.Length; i++)
+        {
+            var columnIndex = _excelColumns[i];
+            var columnName = _dataColumns[i];
+            var backgroundColor = tableHeaderColors[i];
             // Write value
             worksheet.SetValue(rowIndex, columnIndex, columnName);
             
@@ -90,6 +100,13 @@ public class ReportFormatter
             var cell = worksheet.Cells[rowIndex, columnIndex];
             cell.Style.Border.BorderAround(ExcelBorderStyle.Thin);
             cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+            cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+            cell.Style.Fill.BackgroundColor.SetColor(backgroundColor);
+            if (backgroundColor == _darkGreen)
+            {
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.Color.SetColor(Color.White);
+            }
         }
             
     }
@@ -123,10 +140,12 @@ public class ReportFormatter
             var startDate = "";
             var mergeCounter = rowCounter;
             DateOnly prevDate;
+
+            string? curDate;
             
             foreach (DataRow row in dataTable.Rows)
             {
-                var curDate = row.Field<string>("Start date");
+                curDate = row.Field<string>("Start date");
                 if (curDate == null) continue;
                 
                 if (startDate == "")
@@ -154,7 +173,6 @@ public class ReportFormatter
                     var curDateOnly = DateOnly.
                         ParseExact(curDate ?? throw new InvalidOperationException(), "yyyy-MM-dd", _italianCultureInfo);
                     
-                    // TODO this still does not work correctly
                     var prevDay = curDateOnly.AddDays(-1);
                     prevDate = prevDate.AddDays(1);
                     while (prevDate <= prevDay)
@@ -169,6 +187,7 @@ public class ReportFormatter
                             cell.Style.Border.BorderAround(ExcelBorderStyle.Thin);
                             cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
                             cell.Style.Fill.BackgroundColor.SetColor(_lightGrey);
+                            cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
                         }
                         
                         mergeCounter = ++rowCounter;
@@ -180,7 +199,7 @@ public class ReportFormatter
                     }
                     
                     // Since curDateOnly will be written to the worksheet, the next missing day might be the day after
-                    prevDate = curDateOnly.AddDays(1);
+                    prevDate = curDateOnly;
 
                 }
                 
@@ -198,6 +217,8 @@ public class ReportFormatter
                 rowCounter++;
 
             }
+            
+            
             
             // Add the hours grand total
             worksheet.SetValue(rowCounter, 8, $"{(int) _totalWorkedTime.TotalHours}:{_totalWorkedTime.Minutes}");
@@ -231,7 +252,7 @@ public class ReportFormatter
                     cell.Style.Fill.BackgroundColor.SetColor(_paleGreen);
                 }
             }
-
+            
             rowCounter++;
             
             worksheet.SetValue(rowCounter, 6, 0);
@@ -279,12 +300,14 @@ public class ReportFormatter
 
         // Add blank expense table
         rowCounter += 2;
-
+        
         foreach (var (columnName, columnIndex) in _expenseColumnsNames.Zip(_expenseColumns))
         {
             
+            // Set column header
             worksheet.SetValue(rowCounter, columnIndex, columnName);
-
+            
+            // Add styling
             var cell = worksheet.Cells[rowCounter, columnIndex];
             if (columnName is "DATA" or "EURO")
             {
@@ -297,9 +320,9 @@ public class ReportFormatter
                 cell.Style.Fill.BackgroundColor.SetColor(_darkGreen);
                 cell.Style.Font.Color.SetColor(Color.White);
                 cell.Style.Font.Bold = true;
-
             }
             cell.Style.Border.BorderAround(ExcelBorderStyle.Thin);
+            cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
         }
     }
 
@@ -395,13 +418,14 @@ public class ReportFormatter
 
                     // Skip vacation column if no vacation or office leave was used
                     if (!(tags.Contains("ferie") || tags.Contains("permesso"))) value="";
-                    value = (EndTime - StartTime).ToString("hh\\:mm");
+                    else value = (EndTime - StartTime).ToString("hh\\:mm");
                     applyAlignment = true;
                     break;
                 
                 // Flag remote working
-                case "IN PRESENZA S/N":
+                case "IN PRESENZA":
                     tags = row.Field<string>("Tags") ?? "";
+                    tags = tags.ToLower();
 
                     // Search for a "remot*" substring in tags to identify remote working days
                     value = (!tags.Contains("remot"))? "S" : "N";
