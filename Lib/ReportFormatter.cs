@@ -220,8 +220,6 @@ public class ReportFormatter
 
             }
             
-            
-            
             // Add the hours grand total
             worksheet.SetValue(rowCounter, 8, $"{(int) _totalWorkedTime.TotalHours}:{_totalWorkedTime.Minutes}");
             var totalCell = worksheet.Cells[rowCounter, 8];
@@ -281,8 +279,9 @@ public class ReportFormatter
                 var breakIndex = (i + 1) * PageHeight;
                 worksheet.Column(breakIndex).PageBreak = true;
             }
-
-            return package.SaveAsAsync("timesheet.xlsx");
+            
+            // Save the timesheet
+            return package.SaveAsAsync("output/timesheet.xlsx");
         }
     }
 
