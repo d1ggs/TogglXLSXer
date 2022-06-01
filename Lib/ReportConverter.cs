@@ -6,14 +6,13 @@ public static class ReportConverter
 {
     public static DataTable BuildDataTableFromCsv(string csv)
     {
-
-        var table = new DataTable("report");
+        using var table = new DataTable("report");
         
         var rows = csv.Split('\n');
 
         // Get the header, then remove it from the rows
         var columns = rows[0].Split(',');
-
+        
         foreach (var column in columns)
         {
             table.Columns.Add(column);
